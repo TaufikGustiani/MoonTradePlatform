@@ -425,3 +425,64 @@ final class LunarOrderBook {
         try {
             return asks.isEmpty() ? Optional.empty() : Optional.of(asks.firstKey());
         } finally {
+            lock.readLock().unlock();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// EVENT LOG (in-memory)
+// -----------------------------------------------------------------------------
+
+final class LunarEventLog {
+    private static final int MAX_EVENTS = 50_000;
+    private final List<LunarEvent> events = new CopyOnWriteArrayList<>();
+
+    static final class LunarEvent {
+        final long time;
+        final String kind;
+        final String payload;
+
+        LunarEvent(long time, String kind, String payload) {
+            this.time = time;
+            this.kind = kind;
+            this.payload = payload;
+        }
+    }
+
+    void emit(String kind, String payload) {
+        events.add(new LunarEvent(System.currentTimeMillis(), kind, payload));
+        while (events.size() > MAX_EVENTS) events.remove(0);
+    }
+
+    List<LunarEvent> recent(int n) {
+        int size = events.size();
+        if (n >= size) return new ArrayList<>(events);
+        return new ArrayList<>(events.subList(size - n, size));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// FEE CONFIG
+// -----------------------------------------------------------------------------
+
+final class LunarFeeConfig {
+    private final int makerBps;
+    private final int takerBps;
+    private final BigInteger feeCapWei;
+
+    LunarFeeConfig(int makerBps, int takerBps, BigInteger feeCapWei) {
+        this.makerBps = makerBps;
+        this.takerBps = takerBps;
+        this.feeCapWei = feeCapWei;
+    }
+
+    int getMakerBps() { return makerBps; }
+    int getTakerBps() { return takerBps; }
+    BigInteger getFeeCapWei() { return feeCapWei; }
+}
+
+// -----------------------------------------------------------------------------
+// ID GENERATORS
+// -----------------------------------------------------------------------------
+
