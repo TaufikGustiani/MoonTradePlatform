@@ -486,3 +486,64 @@ final class LunarFeeConfig {
 // ID GENERATORS
 // -----------------------------------------------------------------------------
 
+final class LunarIdGen {
+    private static final AtomicLong orderSeq = new AtomicLong(17000 + new Random().nextInt(8000));
+    private static final AtomicLong tradeSeq = new AtomicLong(29000 + new Random().nextInt(9000));
+    private static final AtomicLong marketSeq = new AtomicLong(400 + new Random().nextInt(200));
+
+    static String nextOrderId() {
+        return "LUNAR-O-" + orderSeq.incrementAndGet() + "-" + Long.toHexString(System.nanoTime());
+    }
+
+    static String nextTradeId() {
+        return "LUNAR-T-" + tradeSeq.incrementAndGet() + "-" + Long.toHexString(System.nanoTime());
+    }
+
+    static String nextMarketId() {
+        return "LUNAR-M-" + marketSeq.incrementAndGet();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// MATCHING ENGINE
+// -----------------------------------------------------------------------------
+
+final class LunarMatchingEngine {
+    private final LunarOrderBook book;
+    private final LunarBalanceLedger ledger;
+    private final LunarFeeConfig feeConfig;
+    private final LunarEventLog eventLog;
+    private final String baseSymbol;
+    private final String quoteSymbol;
+    private final List<LunarTrade> lastTrades = new CopyOnWriteArrayList<>();
+    private java.util.function.Consumer<LunarTrade> onTradeCallback;
+
+    LunarMatchingEngine(LunarOrderBook book, LunarBalanceLedger ledger, LunarFeeConfig feeConfig,
+                        LunarEventLog eventLog, String baseSymbol, String quoteSymbol) {
+        this.book = book;
+        this.ledger = ledger;
+        this.feeConfig = feeConfig;
+        this.eventLog = eventLog;
+        this.baseSymbol = baseSymbol;
+        this.quoteSymbol = quoteSymbol;
+    }
+
+    void setOnTradeCallback(java.util.function.Consumer<LunarTrade> onTradeCallback) {
+        this.onTradeCallback = onTradeCallback;
+    }
+
+    List<LunarTrade> getLastTrades() { return new ArrayList<>(lastTrades); }
+
+    void match(LunarOrder incoming) {
+        if (incoming.getSide() == LunarSide.BUY) {
+            matchBuy(incoming);
+        } else {
+            matchSell(incoming);
+        }
+    }
+
+    private void matchBuy(LunarOrder buyOrder) {
+        BigInteger remaining = buyOrder.getRemainingWei();
+        if (remaining.signum() <= 0) return;
+        Optional<BigDecimal> bestAsk = book.bestAsk();
+        if (bestAsk.isEmpty() || buyOrder.getPrice().compareTo(bestAsk.get()) < 0) return;
