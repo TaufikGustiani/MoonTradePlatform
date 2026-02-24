@@ -181,3 +181,64 @@ final class LunarOrder {
     private final long expiryBlock;
     private volatile boolean cancelled;
 
+    LunarOrder(String orderId, String marketId, String traderAddress, LunarSide side, LunarOrderType type,
+               BigDecimal price, BigInteger sizeWei, long expiryBlock) {
+        this.orderId = orderId;
+        this.marketId = marketId;
+        this.traderAddress = traderAddress;
+        this.side = side;
+        this.type = type;
+        this.price = price;
+        this.sizeWei = sizeWei;
+        this.filledWei = BigInteger.ZERO;
+        this.createdAt = System.currentTimeMillis();
+        this.expiryBlock = expiryBlock;
+        this.cancelled = false;
+    }
+
+    String getOrderId() { return orderId; }
+    String getMarketId() { return marketId; }
+    String getTraderAddress() { return traderAddress; }
+    LunarSide getSide() { return side; }
+    LunarOrderType getType() { return type; }
+    BigDecimal getPrice() { return price; }
+    BigInteger getSizeWei() { return sizeWei; }
+    BigInteger getFilledWei() { return filledWei; }
+    long getCreatedAt() { return createdAt; }
+    long getExpiryBlock() { return expiryBlock; }
+    boolean isCancelled() { return cancelled; }
+    void setCancelled(boolean c) { cancelled = c; }
+    BigInteger getRemainingWei() { return sizeWei.subtract(filledWei); }
+}
+
+// -----------------------------------------------------------------------------
+// TRADE RECORD
+// -----------------------------------------------------------------------------
+
+final class LunarTrade {
+    private final String tradeId;
+    private final String marketId;
+    private final String buyOrderId;
+    private final String sellOrderId;
+    private final String buyerAddress;
+    private final String sellerAddress;
+    private final BigDecimal price;
+    private final BigInteger qtyWei;
+    private final long executedAt;
+
+    LunarTrade(String tradeId, String marketId, String buyOrderId, String sellOrderId,
+               String buyerAddress, String sellerAddress, BigDecimal price, BigInteger qtyWei) {
+        this.tradeId = tradeId;
+        this.marketId = marketId;
+        this.buyOrderId = buyOrderId;
+        this.sellOrderId = sellOrderId;
+        this.buyerAddress = buyerAddress;
+        this.sellerAddress = sellerAddress;
+        this.price = price;
+        this.qtyWei = qtyWei;
+        this.executedAt = System.currentTimeMillis();
+    }
+
+    String getTradeId() { return tradeId; }
+    String getMarketId() { return marketId; }
+    String getBuyOrderId() { return buyOrderId; }
