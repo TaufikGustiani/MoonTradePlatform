@@ -364,3 +364,64 @@ final class LunarOrderBook {
             TreeMap<BigDecimal, List<LunarOrder>> book = order.getSide() == LunarSide.BUY ? bids : asks;
             book.computeIfAbsent(order.getPrice(), k -> new ArrayList<>()).add(order);
         } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    void removeOrder(String orderId) {
+        lock.writeLock().lock();
+        try {
+            LunarOrder o = orderById.remove(orderId);
+            if (o == null) return;
+            TreeMap<BigDecimal, List<LunarOrder>> book = o.getSide() == LunarSide.BUY ? bids : asks;
+            List<LunarOrder> list = book.get(o.getPrice());
+            if (list != null) {
+                list.removeIf(ord -> ord.getOrderId().equals(orderId));
+                if (list.isEmpty()) book.remove(o.getPrice());
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
+    LunarOrder getOrder(String orderId) {
+        lock.readLock().lock();
+        try {
+            return orderById.get(orderId);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    List<LunarOrder> getBids(int depth) {
+        lock.readLock().lock();
+        try {
+            return bids.values().stream().flatMap(List::stream).limit(depth).collect(Collectors.toList());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    List<LunarOrder> getAsks(int depth) {
+        lock.readLock().lock();
+        try {
+            return asks.values().stream().flatMap(List::stream).limit(depth).collect(Collectors.toList());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    Optional<BigDecimal> bestBid() {
+        lock.readLock().lock();
+        try {
+            return bids.isEmpty() ? Optional.empty() : Optional.of(bids.firstKey());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    Optional<BigDecimal> bestAsk() {
+        lock.readLock().lock();
+        try {
+            return asks.isEmpty() ? Optional.empty() : Optional.of(asks.firstKey());
+        } finally {
