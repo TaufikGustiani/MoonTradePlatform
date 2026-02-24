@@ -120,3 +120,64 @@ final class LunarWeiMath {
 final class LunarSymbolValidator {
     private static final Pattern SYMBOL_PATTERN = Pattern.compile("^[A-Za-z0-9_]{2,24}$");
     private static final Pattern ADDR_PATTERN = Pattern.compile("^0x[0-9a-fA-F]{40}$");
+
+    static boolean isValidSymbol(String s) {
+        return s != null && SYMBOL_PATTERN.matcher(s).matches();
+    }
+
+    static boolean isValidAddress(String s) {
+        return s != null && ADDR_PATTERN.matcher(s).matches();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// LUNAR TICK SIZE
+// -----------------------------------------------------------------------------
+
+final class LunarTickSize {
+    private static final Map<Integer, BigDecimal> TICK_MAP = new HashMap<>();
+    static {
+        TICK_MAP.put(0, new BigDecimal("0.0001"));
+        TICK_MAP.put(1, new BigDecimal("0.001"));
+        TICK_MAP.put(2, new BigDecimal("0.01"));
+        TICK_MAP.put(3, new BigDecimal("0.1"));
+        TICK_MAP.put(4, new BigDecimal("1"));
+        TICK_MAP.put(5, new BigDecimal("10"));
+        TICK_MAP.put(6, new BigDecimal("100"));
+    }
+
+    static BigDecimal tickForDecimals(int decimals) {
+        return TICK_MAP.getOrDefault(Math.min(decimals, 6), new BigDecimal("0.01"));
+    }
+
+    static BigDecimal roundToTick(BigDecimal price, BigDecimal tick) {
+        if (tick.signum() <= 0) return price;
+        return price.divide(tick, 0, RoundingMode.HALF_UP).multiply(tick);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ORDER SIDE & TYPE
+// -----------------------------------------------------------------------------
+
+enum LunarSide { BUY, SELL }
+
+enum LunarOrderType { LIMIT, MARKET, FOK, IOC }
+
+// -----------------------------------------------------------------------------
+// ORDER RECORD
+// -----------------------------------------------------------------------------
+
+final class LunarOrder {
+    private final String orderId;
+    private final String marketId;
+    private final String traderAddress;
+    private final LunarSide side;
+    private final LunarOrderType type;
+    private final BigDecimal price;
+    private final BigInteger sizeWei;
+    private final BigInteger filledWei;
+    private final long createdAt;
+    private final long expiryBlock;
+    private volatile boolean cancelled;
+
