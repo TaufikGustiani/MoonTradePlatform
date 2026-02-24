@@ -547,3 +547,64 @@ final class LunarMatchingEngine {
         if (remaining.signum() <= 0) return;
         Optional<BigDecimal> bestAsk = book.bestAsk();
         if (bestAsk.isEmpty() || buyOrder.getPrice().compareTo(bestAsk.get()) < 0) return;
+
+        List<LunarOrder> askLevels = new ArrayList<>(book.getAsks(100));
+        for (LunarOrder sell : askLevels) {
+            if (sell.isCancelled()) continue;
+            if (buyOrder.getPrice().compareTo(sell.getPrice()) < 0) break;
+            BigInteger fillQty = remaining.min(sell.getRemainingWei());
+            if (fillQty.signum() <= 0) continue;
+
+            BigInteger quoteQty = sell.getPrice().multiply(new BigDecimal(fillQty)).toBigInteger();
+            ledger.unlock(sell.getTraderAddress(), baseSymbol, fillQty);
+            ledger.debit(buyOrder.getTraderAddress(), quoteSymbol, quoteQty);
+            ledger.credit(sell.getTraderAddress(), quoteSymbol, quoteQty);
+            ledger.credit(buyOrder.getTraderAddress(), baseSymbol, fillQty);
+
+            LunarTrade trade = new LunarTrade(LunarIdGen.nextTradeId(), book.getMarketId(),
+                buyOrder.getOrderId(), sell.getOrderId(), buyOrder.getTraderAddress(), sell.getTraderAddress(),
+                sell.getPrice(), fillQty);
+            lastTrades.add(trade);
+            eventLog.emit("LunarTrade", trade.getTradeId() + "|" + fillQty);
+            if (onTradeCallback != null) onTradeCallback.accept(trade);
+
+            remaining = remaining.subtract(fillQty);
+            if (remaining.signum() <= 0) break;
+        }
+    }
+
+    private void matchSell(LunarOrder sellOrder) {
+        BigInteger remaining = sellOrder.getRemainingWei();
+        if (remaining.signum() <= 0) return;
+        Optional<BigDecimal> bestBid = book.bestBid();
+        if (bestBid.isEmpty() || sellOrder.getPrice().compareTo(bestBid.get()) > 0) return;
+
+        List<LunarOrder> bidLevels = new ArrayList<>(book.getBids(100));
+        for (LunarOrder buy : bidLevels) {
+            if (buy.isCancelled()) continue;
+            if (sellOrder.getPrice().compareTo(buy.getPrice()) > 0) break;
+            BigInteger fillQty = remaining.min(buy.getRemainingWei());
+            if (fillQty.signum() <= 0) continue;
+
+            BigInteger quoteQty = buy.getPrice().multiply(new BigDecimal(fillQty)).toBigInteger();
+            ledger.unlock(sellOrder.getTraderAddress(), baseSymbol, fillQty);
+            ledger.debit(buy.getTraderAddress(), quoteSymbol, quoteQty);
+            ledger.credit(sellOrder.getTraderAddress(), quoteSymbol, quoteQty);
+            ledger.credit(buy.getTraderAddress(), baseSymbol, fillQty);
+
+            LunarTrade trade = new LunarTrade(LunarIdGen.nextTradeId(), book.getMarketId(),
+                buy.getOrderId(), sellOrder.getOrderId(), buy.getTraderAddress(), sellOrder.getTraderAddress(),
+                buy.getPrice(), fillQty);
+            lastTrades.add(trade);
+            eventLog.emit("LunarTrade", trade.getTradeId() + "|" + fillQty);
+            if (onTradeCallback != null) onTradeCallback.accept(trade);
+
+            remaining = remaining.subtract(fillQty);
+            if (remaining.signum() <= 0) break;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// PRICE HISTORY (OHLCV-style)
+// -----------------------------------------------------------------------------
