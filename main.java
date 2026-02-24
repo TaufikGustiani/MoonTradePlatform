@@ -242,3 +242,64 @@ final class LunarTrade {
     String getTradeId() { return tradeId; }
     String getMarketId() { return marketId; }
     String getBuyOrderId() { return buyOrderId; }
+    String getSellOrderId() { return sellOrderId; }
+    String getBuyerAddress() { return buyerAddress; }
+    String getSellerAddress() { return sellerAddress; }
+    BigDecimal getPrice() { return price; }
+    BigInteger getQtyWei() { return qtyWei; }
+    long getExecutedAt() { return executedAt; }
+}
+
+// -----------------------------------------------------------------------------
+// MARKET DEFINITION
+// -----------------------------------------------------------------------------
+
+final class LunarMarket {
+    private final String marketId;
+    private final String baseSymbol;
+    private final String quoteSymbol;
+    private final int baseDecimals;
+    private final int quoteDecimals;
+    private final BigDecimal tickSize;
+    private final BigInteger minOrderWei;
+    private final BigInteger maxOrderWei;
+    private final long createdAt;
+
+    LunarMarket(String marketId, String baseSymbol, String quoteSymbol, int baseDecimals, int quoteDecimals,
+                BigDecimal tickSize, BigInteger minOrderWei, BigInteger maxOrderWei) {
+        this.marketId = marketId;
+        this.baseSymbol = baseSymbol;
+        this.quoteSymbol = quoteSymbol;
+        this.baseDecimals = baseDecimals;
+        this.quoteDecimals = quoteDecimals;
+        this.tickSize = tickSize;
+        this.minOrderWei = minOrderWei;
+        this.maxOrderWei = maxOrderWei;
+        this.createdAt = System.currentTimeMillis();
+    }
+
+    String getMarketId() { return marketId; }
+    String getBaseSymbol() { return baseSymbol; }
+    String getQuoteSymbol() { return quoteSymbol; }
+    int getBaseDecimals() { return baseDecimals; }
+    int getQuoteDecimals() { return quoteDecimals; }
+    BigDecimal getTickSize() { return tickSize; }
+    BigInteger getMinOrderWei() { return minOrderWei; }
+    BigInteger getMaxOrderWei() { return maxOrderWei; }
+    long getCreatedAt() { return createdAt; }
+}
+
+// -----------------------------------------------------------------------------
+// BALANCE LEDGER
+// -----------------------------------------------------------------------------
+
+final class LunarBalanceLedger {
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, BigInteger>> balances = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, BigInteger> locked = new ConcurrentHashMap<>();
+
+    BigInteger balanceOf(String address, String symbol) {
+        ConcurrentHashMap<String, BigInteger> bySymbol = balances.get(address);
+        if (bySymbol == null) return BigInteger.ZERO;
+        return bySymbol.getOrDefault(symbol, BigInteger.ZERO);
+    }
+
