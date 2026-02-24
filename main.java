@@ -303,3 +303,64 @@ final class LunarBalanceLedger {
         return bySymbol.getOrDefault(symbol, BigInteger.ZERO);
     }
 
+    BigInteger lockedOf(String address, String symbol) {
+        return locked.getOrDefault(address + ":" + symbol, BigInteger.ZERO);
+    }
+
+    void credit(String address, String symbol, BigInteger amount) {
+        balances.computeIfAbsent(address, k -> new ConcurrentHashMap<>())
+                .merge(symbol, amount == null ? BigInteger.ZERO : amount, LunarWeiMath::addSafe);
+    }
+
+    void debit(String address, String symbol, BigInteger amount) {
+        if (amount == null || amount.signum() <= 0) return;
+        ConcurrentHashMap<String, BigInteger> bySymbol = balances.get(address);
+        if (bySymbol == null) throw new LunarTradeException(LunarErrorCodes.LUNAR_INSUFFICIENT_BAL, "No balance");
+        bySymbol.merge(symbol, amount, (a, b) -> {
+            BigInteger r = a.subtract(b);
+            if (r.signum() < 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_INSUFFICIENT_BAL, "Insufficient");
+            return r;
+        });
+    }
+
+    void lock(String address, String symbol, BigInteger amount) {
+        if (amount == null || amount.signum() <= 0) return;
+        debit(address, symbol, amount);
+        locked.merge(address + ":" + symbol, amount, LunarWeiMath::addSafe);
+    }
+
+    void unlock(String address, String symbol, BigInteger amount) {
+        if (amount == null || amount.signum() <= 0) return;
+        String key = address + ":" + symbol;
+        BigInteger cur = locked.get(key);
+        if (cur == null || cur.compareTo(amount) < 0)
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_INTEGRITY, "Lock underflow");
+        locked.put(key, cur.subtract(amount));
+        credit(address, symbol, amount);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ORDER BOOK (price-time priority)
+// -----------------------------------------------------------------------------
+
+final class LunarOrderBook {
+    private final String marketId;
+    private final TreeMap<BigDecimal, List<LunarOrder>> bids = new TreeMap<>(Comparator.reverseOrder());
+    private final TreeMap<BigDecimal, List<LunarOrder>> asks = new TreeMap<>();
+    private final Map<String, LunarOrder> orderById = new ConcurrentHashMap<>();
+    private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    LunarOrderBook(String marketId) {
+        this.marketId = marketId;
+    }
+
+    String getMarketId() { return marketId; }
+
+    void addOrder(LunarOrder order) {
+        lock.writeLock().lock();
+        try {
+            orderById.put(order.getOrderId(), order);
+            TreeMap<BigDecimal, List<LunarOrder>> book = order.getSide() == LunarSide.BUY ? bids : asks;
+            book.computeIfAbsent(order.getPrice(), k -> new ArrayList<>()).add(order);
+        } finally {
