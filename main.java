@@ -59,3 +59,64 @@ final class LunarErrorCodes {
             case LUNAR_MARKET_MISSING: return "Market not found";
             case LUNAR_MARKET_EXISTS: return "Market already exists";
             case LUNAR_ORDER_MISSING: return "Order not found";
+            case LUNAR_ORDER_FILLED: return "Order already filled";
+            case LUNAR_ORDER_CANCELLED: return "Order cancelled";
+            case LUNAR_PLATFORM_HALTED: return "Platform halted";
+            case LUNAR_XFER_FAIL: return "Transfer failed";
+            case LUNAR_INSUFFICIENT_BAL: return "Insufficient balance";
+            case LUNAR_CAP_EXCEEDED: return "Order or position cap exceeded";
+            case LUNAR_BAD_TICK: return "Price not on tick";
+            case LUNAR_SLIPPAGE: return "Slippage exceeded";
+            case LUNAR_INTEGRITY: return "Integrity check failed";
+            case LUNAR_BAD_SYMBOL: return "Invalid symbol";
+            default: return "Unknown: " + code;
+        }
+    }
+
+    static List<String> allCodes() {
+        return List.of(LUNAR_ZERO_AMOUNT, LUNAR_ZERO_ADDRESS, LUNAR_NOT_OPERATOR, LUNAR_MARKET_MISSING,
+            LUNAR_MARKET_EXISTS, LUNAR_ORDER_MISSING, LUNAR_ORDER_FILLED, LUNAR_ORDER_CANCELLED,
+            LUNAR_PLATFORM_HALTED, LUNAR_XFER_FAIL, LUNAR_INSUFFICIENT_BAL, LUNAR_CAP_EXCEEDED,
+            LUNAR_BAD_TICK, LUNAR_SLIPPAGE, LUNAR_INTEGRITY, LUNAR_BAD_SYMBOL);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// WEI / U256 SAFE MATH
+// -----------------------------------------------------------------------------
+
+final class LunarWeiMath {
+    private static final BigInteger MAX_U256 = BigInteger.ONE.shiftLeft(256).subtract(BigInteger.ONE);
+
+    static BigInteger clampU256(BigInteger value) {
+        if (value == null || value.signum() < 0) return BigInteger.ZERO;
+        if (value.compareTo(MAX_U256) > 0) return MAX_U256;
+        return value;
+    }
+
+    static BigInteger addSafe(BigInteger a, BigInteger b) {
+        BigInteger sum = (a == null ? BigInteger.ZERO : a).add(b == null ? BigInteger.ZERO : b);
+        return clampU256(sum);
+    }
+
+    static BigInteger subSafe(BigInteger a, BigInteger b) {
+        BigInteger aa = a == null ? BigInteger.ZERO : a;
+        BigInteger bb = b == null ? BigInteger.ZERO : b;
+        if (bb.compareTo(aa) > 0) return BigInteger.ZERO;
+        return aa.subtract(bb);
+    }
+
+    static BigInteger mulSafe(BigInteger a, BigInteger b) {
+        if (a == null || b == null) return BigInteger.ZERO;
+        BigInteger p = a.multiply(b);
+        return clampU256(p);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// SYMBOL & ADDRESS VALIDATION
+// -----------------------------------------------------------------------------
+
+final class LunarSymbolValidator {
+    private static final Pattern SYMBOL_PATTERN = Pattern.compile("^[A-Za-z0-9_]{2,24}$");
+    private static final Pattern ADDR_PATTERN = Pattern.compile("^0x[0-9a-fA-F]{40}$");
