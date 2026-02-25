@@ -1096,3 +1096,64 @@ public final class MoonTradePlatform {
         ob.addOrder(order);
         LunarMatchingEngine eng = engines.get(marketId);
         eng.match(order);
+        eventLog.emit("LunarOrderPlaced", orderId);
+        return order;
+    }
+
+    public void cancelOrder(String marketId, String orderId) {
+        LunarOrderBook ob = orderBooks.get(marketId);
+        if (ob == null) throw new LunarTradeException(LunarErrorCodes.LUNAR_MARKET_MISSING, marketId);
+        LunarOrder o = ob.getOrder(orderId);
+        if (o == null) throw new LunarTradeException(LunarErrorCodes.LUNAR_ORDER_MISSING, orderId);
+        o.setCancelled(true);
+        ob.removeOrder(orderId);
+        LunarMarket m = markets.get(marketId);
+        if (o.getSide() == LunarSide.SELL) {
+            ledger.unlock(o.getTraderAddress(), m.getBaseSymbol(), o.getRemainingWei());
+        } else {
+            BigInteger refund = o.getPrice().multiply(new BigDecimal(o.getRemainingWei())).toBigInteger();
+            ledger.credit(o.getTraderAddress(), m.getQuoteSymbol(), refund);
+        }
+        eventLog.emit("LunarOrderCancelled", orderId);
+    }
+
+    public List<LunarTrade> getLastTrades(String marketId, int n) {
+        LunarMatchingEngine eng = engines.get(marketId);
+        if (eng == null) return Collections.emptyList();
+        List<LunarTrade> all = eng.getLastTrades();
+        if (n >= all.size()) return new ArrayList<>(all);
+        return new ArrayList<>(all.subList(all.size() - n, all.size()));
+    }
+
+    public List<LunarOrder> getBids(String marketId, int depth) {
+        LunarOrderBook ob = orderBooks.get(marketId);
+        return ob == null ? Collections.emptyList() : ob.getBids(depth);
+    }
+
+    public List<LunarOrder> getAsks(String marketId, int depth) {
+        LunarOrderBook ob = orderBooks.get(marketId);
+        return ob == null ? Collections.emptyList() : ob.getAsks(depth);
+    }
+
+    public List<LunarEventLog.LunarEvent> getRecentEvents(int n) {
+        return eventLog.recent(n);
+    }
+
+    public Collection<LunarMarket> listMarkets() {
+        return new ArrayList<>(markets.values());
+    }
+
+    // -------------------------------------------------------------------------
+    // CLI / DEMO RUNNER
+    // -------------------------------------------------------------------------
+
+    public static void main(String[] args) {
+        String op = "0x7f3a9b2c4d5e6a1b8c9d0e1f2a3b4c5d6e7f8a9b";
+        MoonTradePlatform platform = new MoonTradePlatform(op);
+
+        platform.deposit("0x7f3a9b2c4d5e6a1b8c9d0e1f2a3b4c5d6e7f8a9b", "MOON", new BigInteger("1000000000000000000000"));
+        platform.deposit("0x7f3a9b2c4d5e6a1b8c9d0e1f2a3b4c5d6e7f8a9b", "USDT", new BigInteger("5000000000000000000000"));
+        platform.deposit("0x1e5f9a3b7c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0", "MOON", new BigInteger("2000000000000000000000"));
+        platform.deposit("0x1e5f9a3b7c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0", "USDT", new BigInteger("3000000000000000000000"));
+
+        LunarMarket m = platform.createMarket("MOON", "USDT", 18, 18);
