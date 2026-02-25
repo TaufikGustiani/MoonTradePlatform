@@ -1279,3 +1279,51 @@ public final class MoonTradePlatform {
         LunarMarketStats st = marketStats.get(marketId);
         return st == null ? BigInteger.ZERO : st.getTotalVolumeWei();
     }
+
+    public int getTradeCount(String marketId) {
+        LunarMarketStats st = marketStats.get(marketId);
+        return st == null ? 0 : st.getTradeCount();
+    }
+
+    public static String version() {
+        return "MoonTradePlatform-1.0.0-Lunar";
+    }
+
+    public static BigInteger weiFromEther(String etherStr) {
+        try {
+            BigDecimal bd = new BigDecimal(etherStr);
+            return bd.multiply(BigDecimal.valueOf(1_000_000_000_000_000_000L)).toBigInteger();
+        } catch (Exception e) {
+            return BigInteger.ZERO;
+        }
+    }
+
+    public static String etherFromWei(BigInteger wei) {
+        if (wei == null) return "0";
+        return new BigDecimal(wei).divide(BigDecimal.valueOf(1_000_000_000_000_000_000L), 18, RoundingMode.DOWN).toPlainString();
+    }
+
+    public static long nextExpiryBlock(long blocksFromNow) {
+        return System.currentTimeMillis() / 12_000L + blocksFromNow;
+    }
+
+    // -------------------------------------------------------------------------
+    // EXTENDED DEMO (stress / multi-market)
+    // -------------------------------------------------------------------------
+
+    public static void runExtendedDemo() {
+        String op = "0x4a2b8c0d6e1f3a5b7c9d1e3f5a7b9c0d2e4f6a8b";
+        MoonTradePlatform platform = new MoonTradePlatform(op);
+        platform.deposit("0x4a2b8c0d6e1f3a5b7c9d1e3f5a7b9c0d2e4f6a8b", "MOON", new BigInteger("5000000000000000000000"));
+        platform.deposit("0x4a2b8c0d6e1f3a5b7c9d1e3f5a7b9c0d2e4f6a8b", "USDC", new BigInteger("10000000000000000000000"));
+        platform.deposit("0x5b3c9d1e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c", "MOON", new BigInteger("3000000000000000000000"));
+        platform.deposit("0x5b3c9d1e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c", "USDC", new BigInteger("8000000000000000000000"));
+        LunarMarket m1 = platform.createMarket("MOON", "USDC", 18, 18);
+        platform.placeOrder(m1.getMarketId(), "0x4a2b8c0d6e1f3a5b7c9d1e3f5a7b9c0d2e4f6a8b", LunarSide.BUY, LunarOrderType.LIMIT, new BigDecimal("1.15"), new BigInteger("2000000000000000000"), 888888);
+        platform.placeOrder(m1.getMarketId(), "0x5b3c9d1e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c", LunarSide.SELL, LunarOrderType.LIMIT, new BigDecimal("1.14"), new BigInteger("1000000000000000000"), 888888);
+        LunarHealthStatus health = platform.healthCheck();
+        System.out.println("Health: " + health.isOk() + " markets=" + health.getMarketCount());
+        System.out.println("Version: " + version());
+    }
+}
+
