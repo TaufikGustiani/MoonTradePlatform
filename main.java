@@ -1157,3 +1157,64 @@ public final class MoonTradePlatform {
         platform.deposit("0x1e5f9a3b7c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0", "USDT", new BigInteger("3000000000000000000000"));
 
         LunarMarket m = platform.createMarket("MOON", "USDT", 18, 18);
+        System.out.println("Market: " + m.getMarketId());
+
+        LunarOrder buy = platform.placeOrder(m.getMarketId(), "0x7f3a9b2c4d5e6a1b8c9d0e1f2a3b4c5d6e7f8a9b",
+            LunarSide.BUY, LunarOrderType.LIMIT, new BigDecimal("1.25"),
+            new BigInteger("1000000000000000000"), 999_999);
+        System.out.println("Buy order: " + buy.getOrderId());
+
+        LunarOrder sell = platform.placeOrder(m.getMarketId(), "0x1e5f9a3b7c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0",
+            LunarSide.SELL, LunarOrderType.LIMIT, new BigDecimal("1.24"),
+            new BigInteger("500000000000000000"), 999_999);
+        System.out.println("Sell order: " + sell.getOrderId());
+
+        List<LunarTrade> trades = platform.getLastTrades(m.getMarketId(), 10);
+        for (LunarTrade t : trades) {
+            System.out.println("Trade: " + t.getTradeId() + " @ " + t.getPrice() + " qty=" + t.getQtyWei());
+        }
+
+        System.out.println("MoonTradePlatform demo complete.");
+    }
+
+    // -------------------------------------------------------------------------
+    // BATCH & BULK HELPERS
+    // -------------------------------------------------------------------------
+
+    public void depositBatch(String address, Map<String, BigInteger> amounts) {
+        if (amounts == null || amounts.isEmpty()) return;
+        for (Map.Entry<String, BigInteger> e : amounts.entrySet()) {
+            deposit(address, e.getKey(), e.getValue());
+        }
+    }
+
+    public List<LunarOrder> placeOrdersBatch(String marketId, String traderAddress, List<Object[]> orders) {
+        List<LunarOrder> out = new ArrayList<>();
+        for (Object[] o : orders) {
+            LunarSide side = (LunarSide) o[0];
+            BigDecimal price = (BigDecimal) o[1];
+            BigInteger size = (BigInteger) o[2];
+            long expiry = o.length > 3 ? ((Number) o[3]).longValue() : 999_999L;
+            out.add(placeOrder(marketId, traderAddress, side, LunarOrderType.LIMIT, price, size, expiry));
+        }
+        return out;
+    }
+
+    public Map<String, BigInteger> getAllBalances(String address) {
+        Map<String, BigInteger> out = new HashMap<>();
+        for (LunarMarket m : markets.values()) {
+            BigInteger b = ledger.balanceOf(address, m.getBaseSymbol());
+            if (b.signum() > 0) out.merge(m.getBaseSymbol(), b, LunarWeiMath::addSafe);
+            BigInteger q = ledger.balanceOf(address, m.getQuoteSymbol());
+            if (q.signum() > 0) out.merge(m.getQuoteSymbol(), q, LunarWeiMath::addSafe);
+        }
+        return out;
+    }
+
+    public Optional<BigDecimal> midPrice(String marketId) {
+        LunarOrderBook ob = orderBooks.get(marketId);
+        if (ob == null) return Optional.empty();
+        Optional<BigDecimal> bid = ob.bestBid();
+        Optional<BigDecimal> ask = ob.bestAsk();
+        if (bid.isEmpty() || ask.isEmpty()) return Optional.empty();
+        return Optional.of(bid.get().add(ask.get()).divide(BigDecimal.valueOf(2), 18, RoundingMode.HALF_UP));
