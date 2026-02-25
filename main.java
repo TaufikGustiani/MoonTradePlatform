@@ -730,3 +730,64 @@ final class LunarWithdrawalRequest {
     private final BigInteger amountWei;
     private final long createdAt;
     private volatile boolean processed;
+
+    LunarWithdrawalRequest(String requestId, String address, String symbol, BigInteger amountWei) {
+        this.requestId = requestId;
+        this.address = address;
+        this.symbol = symbol;
+        this.amountWei = amountWei;
+        this.createdAt = System.currentTimeMillis();
+        this.processed = false;
+    }
+    String getRequestId() { return requestId; }
+    String getAddress() { return address; }
+    String getSymbol() { return symbol; }
+    BigInteger getAmountWei() { return amountWei; }
+    long getCreatedAt() { return createdAt; }
+    boolean isProcessed() { return processed; }
+    void setProcessed(boolean p) { processed = p; }
+}
+
+// -----------------------------------------------------------------------------
+// RATE LIMITER (simple in-memory)
+// -----------------------------------------------------------------------------
+
+final class LunarRateLimiter {
+    private final int maxPerWindow;
+    private final long windowMs;
+    private final Map<String, List<Long>> hits = new ConcurrentHashMap<>();
+
+    LunarRateLimiter(int maxPerWindow, long windowMs) {
+        this.maxPerWindow = maxPerWindow;
+        this.windowMs = windowMs;
+    }
+
+    boolean allow(String key) {
+        long now = System.currentTimeMillis();
+        List<Long> list = hits.computeIfAbsent(key, k -> new CopyOnWriteArrayList<>());
+        list.removeIf(t -> now - t > windowMs);
+        if (list.size() >= maxPerWindow) return false;
+        list.add(now);
+        return true;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// FEE CALCULATOR
+// -----------------------------------------------------------------------------
+
+final class LunarFeeCalculator {
+    static BigInteger makerFee(BigInteger notionalWei, int makerBps) {
+        return notionalWei.multiply(BigInteger.valueOf(makerBps)).divide(BigInteger.valueOf(10000));
+    }
+    static BigInteger takerFee(BigInteger notionalWei, int takerBps) {
+        return notionalWei.multiply(BigInteger.valueOf(takerBps)).divide(BigInteger.valueOf(10000));
+    }
+    static BigInteger capFee(BigInteger fee, BigInteger cap) {
+        return fee.min(cap);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// STATS AGGREGATOR
+// -----------------------------------------------------------------------------
