@@ -974,3 +974,64 @@ public final class MoonTradePlatform {
         return m;
     }
 
+    public LunarPriceHistory getPriceHistory(String marketId) {
+        return priceHistories.get(marketId);
+    }
+
+    public LunarMarketStats getMarketStats(String marketId) {
+        return marketStats.get(marketId);
+    }
+
+    public LunarPosition getPosition(String address, String marketId) {
+        LunarMarket m = markets.get(marketId);
+        return m == null ? null : positionTracker.get(address, marketId);
+    }
+
+    public LunarHealthStatus healthCheck() {
+        int orderEst = orderBooks.values().stream().mapToInt(ob -> 0).sum();
+        for (LunarOrderBook ob : orderBooks.values()) {
+            orderEst += ob.getBids(500).size() + ob.getAsks(500).size();
+        }
+        boolean ok = !halted.get() && orderEst < 1_000_000;
+        return new LunarHealthStatus(ok, System.currentTimeMillis(), ok ? "OK" : "Degraded", markets.size(), orderEst);
+    }
+
+    public LunarWithdrawalRequest requestWithdrawal(String address, String symbol, BigInteger amountWei) {
+        if (halted.get()) throw new LunarTradeException(LunarErrorCodes.LUNAR_PLATFORM_HALTED, "Halted");
+        if (!rateLimiter.allow(address)) throw new LunarTradeException(LunarErrorCodes.LUNAR_CAP_EXCEEDED, "Rate limit");
+        if (amountWei == null || amountWei.signum() <= 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_ZERO_AMOUNT, "amount");
+        BigInteger bal = ledger.balanceOf(address, symbol);
+        if (bal.compareTo(amountWei) < 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_INSUFFICIENT_BAL, "balance");
+        String reqId = "LUNAR-W-" + withdrawalSeq.incrementAndGet() + "-" + Long.toHexString(System.nanoTime());
+        LunarWithdrawalRequest req = new LunarWithdrawalRequest(reqId, address, symbol, amountWei);
+        withdrawals.put(reqId, req);
+        ledger.debit(address, symbol, amountWei);
+        eventLog.emit("LunarWithdrawalRequested", reqId);
+        return req;
+    }
+
+    public void processWithdrawal(String requestId) {
+        LunarWithdrawalRequest req = withdrawals.get(requestId);
+        if (req == null) throw new LunarTradeException(LunarErrorCodes.LUNAR_ORDER_MISSING, requestId);
+        if (req.isProcessed()) return;
+        req.setProcessed(true);
+        ledger.credit(req.getAddress(), req.getSymbol(), req.getAmountWei());
+        eventLog.emit("LunarWithdrawalProcessed", requestId);
+    }
+
+    public Optional<BigDecimal> getLastPrice(String marketId) {
+        LunarPriceHistory ph = priceHistories.get(marketId);
+        return ph == null ? Optional.empty() : ph.lastPrice();
+    }
+
+    public boolean checkRateLimit(String key) {
+        return rateLimiter.allow(key);
+    }
+
+    public BigInteger estimateQuoteForBuy(String marketId, BigInteger baseWei) {
+        LunarMarket m = markets.get(marketId);
+        if (m == null) return BigInteger.ZERO;
+        Optional<BigDecimal> ask = orderBooks.get(marketId) == null ? Optional.empty() : orderBooks.get(marketId).bestAsk();
+        BigDecimal price = ask.orElse(BigDecimal.ONE);
+        return LunarQuoteEstimator.estimateQuoteRequired(price, baseWei);
+    }
