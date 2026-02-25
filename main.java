@@ -1035,3 +1035,64 @@ public final class MoonTradePlatform {
         BigDecimal price = ask.orElse(BigDecimal.ONE);
         return LunarQuoteEstimator.estimateQuoteRequired(price, baseWei);
     }
+
+    public BigInteger estimateBaseForSell(String marketId, BigInteger quoteWei) {
+        Optional<BigDecimal> bid = orderBooks.get(marketId) == null ? Optional.empty() : orderBooks.get(marketId).bestBid();
+        BigDecimal price = bid.orElse(BigDecimal.ONE);
+        return LunarQuoteEstimator.estimateBaseReceived(price, quoteWei);
+    }
+
+    public List<LunarMarket> listMarketsByBase(String baseSymbol) {
+        return markets.values().stream().filter(m -> m.getBaseSymbol().equals(baseSymbol)).collect(Collectors.toList());
+    }
+
+    public List<LunarMarket> listMarketsByQuote(String quoteSymbol) {
+        return markets.values().stream().filter(m -> m.getQuoteSymbol().equals(quoteSymbol)).collect(Collectors.toList());
+    }
+
+    public LunarMarket getMarket(String marketId) {
+        LunarMarket m = markets.get(marketId);
+        if (m == null) throw new LunarTradeException(LunarErrorCodes.LUNAR_MARKET_MISSING, marketId);
+        return m;
+    }
+
+    public void deposit(String address, String symbol, BigInteger amountWei) {
+        if (amountWei == null || amountWei.signum() <= 0)
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_ZERO_AMOUNT, "amount");
+        if (!LunarSymbolValidator.isValidAddress(address))
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_ZERO_ADDRESS, "address");
+        ledger.credit(address, symbol, amountWei);
+        eventLog.emit("LunarDeposit", address + "|" + symbol + "|" + amountWei);
+    }
+
+    public BigInteger balanceOf(String address, String symbol) {
+        return ledger.balanceOf(address, symbol);
+    }
+
+    public LunarOrder placeOrder(String marketId, String traderAddress, LunarSide side, LunarOrderType type,
+                                  BigDecimal price, BigInteger sizeWei, long expiryBlock) {
+        if (halted.get()) throw new LunarTradeException(LunarErrorCodes.LUNAR_PLATFORM_HALTED, "Halted");
+        LunarMarket m = getMarket(marketId);
+        if (sizeWei == null || sizeWei.signum() <= 0)
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_ZERO_AMOUNT, "size");
+        if (sizeWei.compareTo(m.getMinOrderWei()) < 0)
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_CAP_EXCEEDED, "Below min");
+        if (sizeWei.compareTo(m.getMaxOrderWei()) > 0)
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_CAP_EXCEEDED, "Above max");
+        price = LunarTickSize.roundToTick(price, m.getTickSize());
+        if (price.signum() <= 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_BAD_TICK, "price");
+
+        String orderId = LunarIdGen.nextOrderId();
+        LunarOrder order = new LunarOrder(orderId, marketId, traderAddress, side, type, price, sizeWei, expiryBlock);
+
+        if (side == LunarSide.SELL) {
+            ledger.lock(traderAddress, m.getBaseSymbol(), sizeWei);
+        } else {
+            BigInteger cost = price.multiply(new BigDecimal(sizeWei)).toBigInteger();
+            ledger.debit(traderAddress, m.getQuoteSymbol(), cost);
+        }
+
+        LunarOrderBook ob = orderBooks.get(marketId);
+        ob.addOrder(order);
+        LunarMatchingEngine eng = engines.get(marketId);
+        eng.match(order);
