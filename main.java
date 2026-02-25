@@ -852,3 +852,64 @@ final class LunarHealthStatus {
 final class LunarConfig {
     static final BigInteger GLOBAL_MIN_ORDER_WEI = new BigInteger("100");
     static final BigInteger GLOBAL_MAX_ORDER_WEI = new BigInteger("999999999999999999999999999");
+    static final int DEFAULT_DECIMALS_BASE = 18;
+    static final int DEFAULT_DECIMALS_QUOTE = 18;
+    static final int RATE_LIMIT_PER_MIN = 120;
+    static final long RATE_LIMIT_WINDOW_MS = 60_000L;
+    static final int MAX_ORDERS_PER_USER_PER_MARKET = 50;
+    static final int EVENT_LOG_RETENTION = 50000;
+    static final String DOMAIN_ANCHOR = "0xf3a7c9e1b5d2f4a6c8e0b2d4f6a8c0e2a4b6d8f0";
+}
+
+// -----------------------------------------------------------------------------
+// SERIALIZATION HELPERS (to string / from string for logging)
+// -----------------------------------------------------------------------------
+
+final class LunarSerialize {
+    static String orderToLine(LunarOrder o) {
+        return o.getOrderId() + "|" + o.getMarketId() + "|" + o.getTraderAddress() + "|" + o.getSide() + "|" + o.getPrice() + "|" + o.getSizeWei() + "|" + o.getFilledWei();
+    }
+    static String tradeToLine(LunarTrade t) {
+        return t.getTradeId() + "|" + t.getMarketId() + "|" + t.getPrice() + "|" + t.getQtyWei() + "|" + t.getBuyerAddress() + "|" + t.getSellerAddress();
+    }
+    static String marketToLine(LunarMarket m) {
+        return m.getMarketId() + "|" + m.getBaseSymbol() + "/" + m.getQuoteSymbol() + "|" + m.getTickSize();
+    }
+}
+
+// -----------------------------------------------------------------------------
+// VALIDATION HELPERS (extra)
+// -----------------------------------------------------------------------------
+
+final class LunarOrderValidator {
+    static void validatePrice(BigDecimal price, BigDecimal tickSize) {
+        if (price == null || price.signum() <= 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_BAD_TICK, "price");
+        BigDecimal rounded = LunarTickSize.roundToTick(price, tickSize);
+        if (rounded.compareTo(price) != 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_BAD_TICK, "Not on tick");
+    }
+    static void validateSize(BigInteger sizeWei, BigInteger minWei, BigInteger maxWei) {
+        if (sizeWei == null || sizeWei.signum() <= 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_ZERO_AMOUNT, "size");
+        if (sizeWei.compareTo(minWei) < 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_CAP_EXCEEDED, "Below min");
+        if (sizeWei.compareTo(maxWei) > 0) throw new LunarTradeException(LunarErrorCodes.LUNAR_CAP_EXCEEDED, "Above max");
+    }
+}
+
+// -----------------------------------------------------------------------------
+// QUOTE ESTIMATOR
+// -----------------------------------------------------------------------------
+
+final class LunarQuoteEstimator {
+    static BigInteger estimateQuoteRequired(BigDecimal price, BigInteger sizeWei) {
+        return price.multiply(new BigDecimal(sizeWei)).toBigInteger();
+    }
+    static BigInteger estimateBaseReceived(BigDecimal price, BigInteger quoteWei) {
+        if (price.signum() == 0) return BigInteger.ZERO;
+        return quoteWei.divide(price.toBigInteger());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// MAIN PLATFORM (single entry)
+// -----------------------------------------------------------------------------
+
+public final class MoonTradePlatform {
