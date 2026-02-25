@@ -1218,3 +1218,64 @@ public final class MoonTradePlatform {
         Optional<BigDecimal> ask = ob.bestAsk();
         if (bid.isEmpty() || ask.isEmpty()) return Optional.empty();
         return Optional.of(bid.get().add(ask.get()).divide(BigDecimal.valueOf(2), 18, RoundingMode.HALF_UP));
+    }
+
+    public Optional<BigDecimal> spread(String marketId) {
+        LunarOrderBook ob = orderBooks.get(marketId);
+        if (ob == null) return Optional.empty();
+        Optional<BigDecimal> bid = ob.bestBid();
+        Optional<BigDecimal> ask = ob.bestAsk();
+        if (bid.isEmpty() || ask.isEmpty()) return Optional.empty();
+        return Optional.of(ask.get().subtract(bid.get()));
+    }
+
+    public String formatOrderForLog(LunarOrder o) {
+        return LunarSerialize.orderToLine(o);
+    }
+
+    public String formatTradeForLog(LunarTrade t) {
+        return LunarSerialize.tradeToLine(t);
+    }
+
+    public String formatMarketForLog(LunarMarket m) {
+        return LunarSerialize.marketToLine(m);
+    }
+
+    public void validateOrderParams(String marketId, BigDecimal price, BigInteger sizeWei) {
+        LunarMarket m = getMarket(marketId);
+        LunarOrderValidator.validatePrice(price, m.getTickSize());
+        LunarOrderValidator.validateSize(sizeWei, m.getMinOrderWei(), m.getMaxOrderWei());
+    }
+
+    public int getOpenOrderCount(String marketId) {
+        LunarOrderBook ob = orderBooks.get(marketId);
+        if (ob == null) return 0;
+        return ob.getBids(10000).size() + ob.getAsks(10000).size();
+    }
+
+    public LunarFeeConfig getFeeConfig() {
+        return feeConfig;
+    }
+
+    public LunarWithdrawalRequest getWithdrawal(String requestId) {
+        return withdrawals.get(requestId);
+    }
+
+    public Collection<LunarWithdrawalRequest> getPendingWithdrawals() {
+        return withdrawals.values().stream().filter(w -> !w.isProcessed()).collect(Collectors.toList());
+    }
+
+    public List<LunarPriceSnapshot> getPriceSnapshots(String marketId, int n) {
+        LunarPriceHistory ph = priceHistories.get(marketId);
+        return ph == null ? Collections.emptyList() : ph.getRecent(n);
+    }
+
+    public Optional<BigDecimal> getVwap(String marketId) {
+        LunarMarketStats st = marketStats.get(marketId);
+        return st == null ? Optional.empty() : st.getVwap();
+    }
+
+    public BigInteger getTotalVolume(String marketId) {
+        LunarMarketStats st = marketStats.get(marketId);
+        return st == null ? BigInteger.ZERO : st.getTotalVolumeWei();
+    }
