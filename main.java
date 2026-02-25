@@ -608,3 +608,64 @@ final class LunarMatchingEngine {
 // -----------------------------------------------------------------------------
 // PRICE HISTORY (OHLCV-style)
 // -----------------------------------------------------------------------------
+
+final class LunarPriceSnapshot {
+    private final long time;
+    private final BigDecimal open;
+    private final BigDecimal high;
+    private final BigDecimal low;
+    private final BigDecimal close;
+    private final BigInteger volumeWei;
+
+    LunarPriceSnapshot(long time, BigDecimal open, BigDecimal high, BigDecimal low, BigDecimal close, BigInteger volumeWei) {
+        this.time = time;
+        this.open = open;
+        this.high = high;
+        this.low = low;
+        this.close = close;
+        this.volumeWei = volumeWei;
+    }
+    long getTime() { return time; }
+    BigDecimal getOpen() { return open; }
+    BigDecimal getHigh() { return high; }
+    BigDecimal getLow() { return low; }
+    BigDecimal getClose() { return close; }
+    BigInteger getVolumeWei() { return volumeWei; }
+}
+
+final class LunarPriceHistory {
+    private static final int MAX_SNAPSHOTS = 10000;
+    private final String marketId;
+    private final List<LunarPriceSnapshot> snapshots = new CopyOnWriteArrayList<>();
+
+    LunarPriceHistory(String marketId) { this.marketId = marketId; }
+    String getMarketId() { return marketId; }
+
+    void record(BigDecimal price, BigInteger volumeWei) {
+        long t = System.currentTimeMillis();
+        snapshots.add(new LunarPriceSnapshot(t, price, price, price, price, volumeWei));
+        while (snapshots.size() > MAX_SNAPSHOTS) snapshots.remove(0);
+    }
+
+    void recordCandle(long time, BigDecimal o, BigDecimal h, BigDecimal l, BigDecimal c, BigInteger vol) {
+        snapshots.add(new LunarPriceSnapshot(time, o, h, l, c, vol));
+        while (snapshots.size() > MAX_SNAPSHOTS) snapshots.remove(0);
+    }
+
+    List<LunarPriceSnapshot> getRecent(int n) {
+        int s = snapshots.size();
+        if (n >= s) return new ArrayList<>(snapshots);
+        return new ArrayList<>(snapshots.subList(s - n, s));
+    }
+
+    Optional<BigDecimal> lastPrice() {
+        return snapshots.isEmpty() ? Optional.empty() : Optional.of(snapshots.get(snapshots.size() - 1).getClose());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// POSITION TRACKER (per-address per-market)
+// -----------------------------------------------------------------------------
+
+final class LunarPosition {
+    private final String address;
