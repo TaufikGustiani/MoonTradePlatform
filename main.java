@@ -669,3 +669,64 @@ final class LunarPriceHistory {
 
 final class LunarPosition {
     private final String address;
+    private final String marketId;
+    private final String baseSymbol;
+    private final String quoteSymbol;
+    private BigInteger baseWei;
+    private BigInteger quoteWei;
+    private BigInteger realizedPnlWei;
+    private long updatedAt;
+
+    LunarPosition(String address, String marketId, String baseSymbol, String quoteSymbol) {
+        this.address = address;
+        this.marketId = marketId;
+        this.baseSymbol = baseSymbol;
+        this.quoteSymbol = quoteSymbol;
+        this.baseWei = BigInteger.ZERO;
+        this.quoteWei = BigInteger.ZERO;
+        this.realizedPnlWei = BigInteger.ZERO;
+        this.updatedAt = System.currentTimeMillis();
+    }
+    String getAddress() { return address; }
+    String getMarketId() { return marketId; }
+    String getBaseSymbol() { return baseSymbol; }
+    String getQuoteSymbol() { return quoteSymbol; }
+    BigInteger getBaseWei() { return baseWei; }
+    BigInteger getQuoteWei() { return quoteWei; }
+    BigInteger getRealizedPnlWei() { return realizedPnlWei; }
+    long getUpdatedAt() { return updatedAt; }
+    void addBase(BigInteger delta) { baseWei = LunarWeiMath.addSafe(baseWei, delta); updatedAt = System.currentTimeMillis(); }
+    void addQuote(BigInteger delta) { quoteWei = LunarWeiMath.addSafe(quoteWei, delta); updatedAt = System.currentTimeMillis(); }
+    void addPnl(BigInteger delta) { realizedPnlWei = realizedPnlWei.add(delta); updatedAt = System.currentTimeMillis(); }
+}
+
+final class LunarPositionTracker {
+    private final Map<String, LunarPosition> positions = new ConcurrentHashMap<>();
+
+    String key(String address, String marketId) { return address + "|" + marketId; }
+
+    LunarPosition getOrCreate(String address, String marketId, String baseSymbol, String quoteSymbol) {
+        return positions.computeIfAbsent(key(address, marketId),
+            k -> new LunarPosition(address, marketId, baseSymbol, quoteSymbol));
+    }
+
+    LunarPosition get(String address, String marketId) {
+        return positions.get(key(address, marketId));
+    }
+
+    Collection<LunarPosition> allForAddress(String address) {
+        return positions.values().stream().filter(p -> p.getAddress().equals(address)).collect(Collectors.toList());
+    }
+}
+
+// -----------------------------------------------------------------------------
+// WITHDRAWAL REQUEST
+// -----------------------------------------------------------------------------
+
+final class LunarWithdrawalRequest {
+    private final String requestId;
+    private final String address;
+    private final String symbol;
+    private final BigInteger amountWei;
+    private final long createdAt;
+    private volatile boolean processed;
