@@ -791,3 +791,64 @@ final class LunarFeeCalculator {
 // -----------------------------------------------------------------------------
 // STATS AGGREGATOR
 // -----------------------------------------------------------------------------
+
+final class LunarMarketStats {
+    private final String marketId;
+    private BigInteger totalVolumeWei = BigInteger.ZERO;
+    private int tradeCount;
+    private BigDecimal vwapSum = BigDecimal.ZERO;
+    private BigInteger vwapDenom = BigInteger.ZERO;
+    private long lastTradeTime;
+
+    LunarMarketStats(String marketId) { this.marketId = marketId; }
+    String getMarketId() { return marketId; }
+    BigInteger getTotalVolumeWei() { return totalVolumeWei; }
+    int getTradeCount() { return tradeCount; }
+    long getLastTradeTime() { return lastTradeTime; }
+
+    void recordTrade(BigInteger qtyWei, BigDecimal price) {
+        totalVolumeWei = LunarWeiMath.addSafe(totalVolumeWei, qtyWei);
+        tradeCount++;
+        vwapSum = vwapSum.add(price.multiply(new BigDecimal(qtyWei)));
+        vwapDenom = vwapDenom.add(qtyWei);
+        lastTradeTime = System.currentTimeMillis();
+    }
+
+    Optional<BigDecimal> getVwap() {
+        if (vwapDenom.signum() == 0) return Optional.empty();
+        return Optional.of(vwapSum.divide(new BigDecimal(vwapDenom), 18, RoundingMode.HALF_UP));
+    }
+}
+
+// -----------------------------------------------------------------------------
+// HEALTH CHECK
+// -----------------------------------------------------------------------------
+
+final class LunarHealthStatus {
+    private final boolean ok;
+    private final long timestamp;
+    private final String message;
+    private final int marketCount;
+    private final int orderCountEstimate;
+
+    LunarHealthStatus(boolean ok, long timestamp, String message, int marketCount, int orderCountEstimate) {
+        this.ok = ok;
+        this.timestamp = timestamp;
+        this.message = message;
+        this.marketCount = marketCount;
+        this.orderCountEstimate = orderCountEstimate;
+    }
+    boolean isOk() { return ok; }
+    long getTimestamp() { return timestamp; }
+    String getMessage() { return message; }
+    int getMarketCount() { return marketCount; }
+    int getOrderCountEstimate() { return orderCountEstimate; }
+}
+
+// -----------------------------------------------------------------------------
+// CONFIG LOADER (placeholder for env/file)
+// -----------------------------------------------------------------------------
+
+final class LunarConfig {
+    static final BigInteger GLOBAL_MIN_ORDER_WEI = new BigInteger("100");
+    static final BigInteger GLOBAL_MAX_ORDER_WEI = new BigInteger("999999999999999999999999999");
