@@ -913,3 +913,64 @@ final class LunarQuoteEstimator {
 // -----------------------------------------------------------------------------
 
 public final class MoonTradePlatform {
+    private static final BigInteger DEFAULT_MIN_ORDER = BigInteger.valueOf(1000);
+    private static final BigInteger DEFAULT_MAX_ORDER = new BigInteger("999999999999999999999999");
+    private static final int FEE_MAKER_BPS = 4;
+    private static final int FEE_TAKER_BPS = 9;
+    private static final BigInteger FEE_CAP = new BigInteger("1000000000000000000");
+
+    private final String operatorAddress;
+    private final LunarBalanceLedger ledger = new LunarBalanceLedger();
+    private final LunarEventLog eventLog = new LunarEventLog();
+    private final LunarFeeConfig feeConfig = new LunarFeeConfig(FEE_MAKER_BPS, FEE_TAKER_BPS, FEE_CAP);
+    private final Map<String, LunarMarket> markets = new ConcurrentHashMap<>();
+    private final Map<String, LunarOrderBook> orderBooks = new ConcurrentHashMap<>();
+    private final Map<String, LunarMatchingEngine> engines = new ConcurrentHashMap<>();
+    private final Map<String, LunarPriceHistory> priceHistories = new ConcurrentHashMap<>();
+    private final Map<String, LunarMarketStats> marketStats = new ConcurrentHashMap<>();
+    private final LunarPositionTracker positionTracker = new LunarPositionTracker();
+    private final Map<String, LunarWithdrawalRequest> withdrawals = new ConcurrentHashMap<>();
+    private final LunarRateLimiter rateLimiter = new LunarRateLimiter(LunarConfig.RATE_LIMIT_PER_MIN, LunarConfig.RATE_LIMIT_WINDOW_MS);
+    private final AtomicLong withdrawalSeq = new AtomicLong(9000 + new Random().nextInt(4000));
+    private final AtomicBoolean halted = new AtomicBoolean(false);
+
+    public MoonTradePlatform(String operatorAddress) {
+        if (!LunarSymbolValidator.isValidAddress(operatorAddress))
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_ZERO_ADDRESS, "Invalid operator");
+        this.operatorAddress = operatorAddress;
+    }
+
+    public String getOperatorAddress() { return operatorAddress; }
+    public boolean isHalted() { return halted.get(); }
+
+    public void setHalted(boolean h) {
+        halted.set(h);
+        eventLog.emit("LunarHalt", h ? "1" : "0");
+    }
+
+    public LunarMarket createMarket(String baseSymbol, String quoteSymbol, int baseDecimals, int quoteDecimals) {
+        if (halted.get()) throw new LunarTradeException(LunarErrorCodes.LUNAR_PLATFORM_HALTED, "Halted");
+        if (!LunarSymbolValidator.isValidSymbol(baseSymbol) || !LunarSymbolValidator.isValidSymbol(quoteSymbol))
+            throw new LunarTradeException(LunarErrorCodes.LUNAR_BAD_SYMBOL, "Bad symbol");
+        String marketId = LunarIdGen.nextMarketId();
+        if (markets.containsKey(marketId)) throw new LunarTradeException(LunarErrorCodes.LUNAR_MARKET_EXISTS, marketId);
+        BigDecimal tick = LunarTickSize.tickForDecimals(quoteDecimals);
+        LunarMarket m = new LunarMarket(marketId, baseSymbol, quoteSymbol, baseDecimals, quoteDecimals,
+            tick, DEFAULT_MIN_ORDER, DEFAULT_MAX_ORDER);
+        markets.put(marketId, m);
+        LunarOrderBook ob = new LunarOrderBook(marketId);
+        orderBooks.put(marketId, ob);
+        LunarMatchingEngine eng = new LunarMatchingEngine(ob, ledger, feeConfig, eventLog, baseSymbol, quoteSymbol);
+        LunarPriceHistory ph = new LunarPriceHistory(marketId);
+        LunarMarketStats st = new LunarMarketStats(marketId);
+        eng.setOnTradeCallback(t -> {
+            ph.record(t.getPrice(), t.getQtyWei());
+            st.recordTrade(t.getQtyWei(), t.getPrice());
+        });
+        engines.put(marketId, eng);
+        priceHistories.put(marketId, ph);
+        marketStats.put(marketId, st);
+        eventLog.emit("LunarMarketCreated", marketId);
+        return m;
+    }
+
